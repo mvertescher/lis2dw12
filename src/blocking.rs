@@ -105,6 +105,40 @@ where
         ))
     }
 
+    // TODO: enum for mode
+    pub fn set_fifo_mode(&mut self, mode: u8) -> Result<(), Error<SpiError, PinError>> {
+        let reset_bits = 0b1110_0000;
+        let set_bits = (mode as u8) << 5;
+        self.reg_reset_bits(Register::FIFO_CTRL, reset_bits)?;
+        self.reg_set_bits(Register::FIFO_CTRL, set_bits)?;
+        Ok(())
+    }
+
+    /// Check if there was a FIFO overrun
+    pub fn fifo_overrun(&mut self) -> Result<bool, Error<SpiError, PinError>> {
+        Ok((self.read_reg(Register::FIFO_SAMPLES)? & 0x40) != 0)
+    }
+
+    /// Get the number of unread FIFO samples
+    pub fn unread_fifo_samples(&mut self) -> Result<usize, Error<SpiError, PinError>> {
+        Ok((self.read_reg(Register::FIFO_SAMPLES)? & 0x3F).into())
+    }
+
+    // Read multiple raw samples
+    pub fn read_raw_samples<'a>(
+        &mut self,
+        buf: &'a mut [u8],
+    ) -> Result<&'a [u8], Error<SpiError, PinError>> {
+        // Max number of samples
+        let cap = buf.len() / 6;
+        let num_samples = core::cmp::min(cap, self.unread_fifo_samples()?);
+        for i in 0..num_samples {
+            self.read_regs(Register::OUT_X_L, &mut buf[i * 6..(i + 1) * 6])?;
+        }
+
+        Ok(&buf[..num_samples * 6])
+    }
+
     /// Get normalized ±g reading from the accelerometer
     #[cfg(feature = "out_f32")]
     pub fn get_norm(&mut self) -> Result<F32x3, Error<SpiError, PinError>> {
